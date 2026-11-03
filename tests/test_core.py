@@ -496,3 +496,40 @@ def test_data_dir_prompt_and_memory(tmp_path, monkeypatch):
     assert pkg.M_TSE(client=DummyClient(), seed=False).data_dir == target.resolve()
     other = pkg.set_data_dir(tmp_path / "other")
     assert pkg.M_TSE(client=DummyClient(), seed=False).data_dir == other
+
+
+def test_new_api_full_fields_nav_oi_board():
+    opt = new_row(IID_B, "ضهرم8031", "اختيارخ شستا-100-1405/09/25")
+    opt.update({"yVal": 311, "flow": 3, "buyOP": 288142, "pRedTran": 0.0, "cGrValCot": "3A", "yMarNSC": "NO"})
+    fund = new_row(IID_C, "چتر", "صندوق")
+    fund.update({"yVal": 305, "flow": 2, "buyOP": 0, "pRedTran": 23674.0, "cGrValCot": "T1", "yMarNSC": "NO"})
+    stock = new_row(IID_A, "وسپهر", "سپهر")
+    stock.update({"yVal": 303, "flow": 2, "buyOP": 0, "pRedTran": 0.0, "cGrValCot": "Z1", "yMarNSC": "NO"})
+    b = parse_market_watch([opt, fund, stock])
+    assert b.loc[IID_B, "Type"] == "311" and b.loc[IID_B, "MarketType"] == "3"
+    assert b.loc[IID_B, "OpenInterest"] == 288142 and b.loc[IID_B, "Board"] == "3A"
+    assert b.loc[IID_C, "Nav"] == 23674 and pd.isna(b.loc[IID_C, "OpenInterest"])
+    assert pd.isna(b.loc[IID_A, "Nav"]) and pd.isna(b.loc[IID_A, "OpenInterest"])
+    assert b.loc[IID_A, "MarketCode"] == "NO"
+
+
+def test_legacy_25_values_board(sections):
+    f = make_line(IID_B, "ضهرم8024", "311", "اختيارخ شستا-100-1405/09/25").split(",")
+    f.extend(["", "6910", "3A"])
+    sections[2] = ",".join(f)
+    b = parse_watch(sections)
+    assert b.loc[IID_B, "OpenInterest"] == 6910 and b.loc[IID_B, "Board"] == "3A"
+    assert pd.isna(b.loc[IID_B, "Nav"])
+
+
+def test_stream_yields_only_changes(new_rows, tmp_path):
+    client = DummyClient(rows=[dict(r) for r in new_rows])
+    tse = M_TSE(tmp_path, client=client, seed=False, enrich=False)
+    gen = tse.market.stream(interval=0, duration=5)
+    _, first = next(gen)
+    assert len(first) == 3
+    _, second = next(gen)
+    assert second.empty
+    client.rows[0] = dict(client.rows[0], pdv=8100.0)
+    _, third = next(gen)
+    assert list(third.index) == [IID_A] and third.loc[IID_A, "Last"] == 8100

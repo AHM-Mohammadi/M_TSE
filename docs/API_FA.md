@@ -58,16 +58,26 @@ tse.stored_history("65883838195688438", adjusted=False, start=None, end=None, tr
 | `by_type("311")` | فیلتر کد عددی نوع |
 | `by_type("Stock", primary_board_only=True)` | فیلتر انتخابی با IRcode ختم‌شونده به ۱ |
 | `overview()` | شاخص‌ها و آمار تجمیعی بازار در یک DataFrame |
+| `stream(interval=1.0, duration=None, depth=True, types=None, only_changes=True)` | پایش زنده: در هر دور `(زمان, DataFrame)` برمی‌گرداند؛ با `only_changes=True` فقط ردیف‌هایی که تغییر کرده‌اند |
 
 فهرست دسته‌ها: `Sukuk`, `Stock`, `CorporateBond`, `Future`, `Fund`, `Akhza`, `Teseh`, `Salf`, `CallOption`, `PutOption`, `CommodityFund`, `Priority`, `CommodityDerivative`, `Morabehe`.
 
-**ستون‌های اصلی snapshot:** `IndexURL` (index)، `IRcode`، `Ticker`، `Name`، `LastTrade`، `Open`، `Close`، `Last`، `Trades`، `Volume`، `Value`، `Low`، `High`، `PrevClose`، `EPS`، `BaseVolume`، `IDK_1`، `MarketType`، `Industry`، `MaxAlw`، `MinAlw`، `StockQty`، `Type`، `Nav`، `OpenInterest`. دو ستون آخر ممکن است برای برخی نمادها یا پاسخ‌ها خالی باشند. `Ticker` و `Name` همیشه با حروف فارسی «ی» و «ک» برگردانده می‌شوند.
+**ستون‌های اصلی snapshot:** `IndexURL` (index)، `IRcode`، `Ticker`، `Name`، `LastTrade`، `Open`، `Close`، `Last`، `Trades`، `Volume`، `Value`، `Low`، `High`، `PrevClose`، `EPS`، `BaseVolume`، `IDK_1`، `MarketType`، `Industry`، `MaxAlw`، `MinAlw`، `StockQty`، `Type`، `Nav` (NAV ابطال صندوق‌ها؛ برای بقیه NaN)، `OpenInterest` (موقعیت باز اختیار، آتی و مشتقات کالایی؛ برای بقیه NaN)، `Board` (کد گروه/تابلو، مثل `3A`، `T1`، `Z1`)، `MarketCode`. `Ticker` و `Name` همیشه با حروف فارسی «ی» و «ک» برگردانده می‌شوند.
 
 `snapshot(source="old")` یا `overview(source="auto")` منبع را فقط برای همان فراخوانی عوض می‌کند. `tse.market.last_source` نشان می‌دهد آخرین داده از کدام منبع آمده است.
 
 `overview()` در API جدید این ستون‌ها را برمی‌گرداند: `LastTradeDate`، `TSE_Situation`، `TEPIX`، `TEPIXChange`، `TEPIX_EW`، `TEPIX_EWChange`، `TSE_MarketCap`، `TSE_Volume`، `TSE_Value`، `TSE_NumTransaction`، `TSE_LastTradeTime`، و همین ستون‌ها برای فرابورس با پیشوند `IFB_` (به‌همراه `IFX`، `IFXChange`). از `LastTradeDate` می‌شود فهمید داده snapshot مال کدام روز معاملاتی است.
 
 **عمق سفارش:** `BuyPrice1`، `SellPrice1`، `BuyVolume1`، `SellVolume1`، `BuyCount1`، `SellCount1` و همین الگو برای سطوح ۲ تا ۵؛ مقادیر مفقود `NaN` هستند، نه الزاماً صفر.
+
+### پایش زنده
+
+```python
+for t, changed in tse.market.stream(interval=1, duration=60, types=["CallOption", "PutOption"]):
+    print(t.strftime("%H:%M:%S"), len(changed), "ردیف تغییر کرد")
+```
+
+در بررسی زنده، API جدید حدود ۰٫۵ ثانیه پاسخ داد. قیمت‌ها حدوداً هر ۴ تا ۵ ثانیه و عمق سفارش تقریباً هر ثانیه عوض می‌شد.
 
 ## ۳. مشتقات `tse.derivatives`
 

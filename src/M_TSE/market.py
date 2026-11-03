@@ -21,7 +21,7 @@ from .utils import normalize, coerce_id, is_valid_id
 BOARD_FIELDS = ["IRcode", "Ticker", "Name", "LastTrade", "Open", "Close", "Last",
     "Trades", "Volume", "Value", "Low", "High", "PrevClose", "EPS",
     "BaseVolume", "IDK_1", "MarketType", "Industry", "MaxAlw", "MinAlw",
-    "StockQty", "Type", "Nav", "OpenInterest"]
+    "StockQty", "Type", "Nav", "OpenInterest", "Board", "MarketCode"]
 # Legacy MarketWatchInit order of the 22 values after the ID.
 _OLD_ORDER = ["IRcode", "Ticker", "Name", "LastTrade", "Open", "Close", "Last",
     "Trades", "Volume", "Value", "Low", "High", "PrevClose", "EPS",
@@ -54,7 +54,11 @@ _NEW_MAP = {"insID": "IRcode", "lva": "Ticker", "lvc": "Name", "hEven": "LastTra
             "pf": "Open", "pcl": "Close", "pdv": "Last", "ztt": "Trades",
             "qtj": "Volume", "qtc": "Value", "pmn": "Low", "pmx": "High",
             "py": "PrevClose", "eps": "EPS", "bv": "BaseVolume", "vc": "IDK_1",
-            "csv": "Industry", "pMax": "MaxAlw", "pMin": "MinAlw", "ztd": "StockQty"}
+            "csv": "Industry", "pMax": "MaxAlw", "pMin": "MinAlw", "ztd": "StockQty",
+            "yVal": "Type", "flow": "MarketType", "pRedTran": "Nav", "buyOP": "OpenInterest",
+            "cGrValCot": "Board", "yMarNSC": "MarketCode"}
+# Instruments for which open interest is meaningful (options, futures, commodity derivatives).
+_OI_CODES = set(TYPE_CODES["CallOption"]) | set(TYPE_CODES["PutOption"]) | {"304", "701"}
 
 
 def _code_text(value):
@@ -93,11 +97,14 @@ def _finish(frame: pd.DataFrame, *, numeric: bool) -> pd.DataFrame:
             frame[column] = pd.NA
     frame["Ticker"] = frame["Ticker"].map(normalize)
     frame["Name"] = frame["Name"].map(normalize)
-    for column in ("Type", "MarketType", "Industry"):
+    for column in ("Type", "MarketType", "Industry", "Board", "MarketCode"):
         frame[column] = frame[column].map(_code_text).astype("object")
     if numeric:
         for col in NUMERIC:
             frame[col] = pd.to_numeric(frame[col], errors="coerce")
+        # NAV only exists for funds (0/blank elsewhere); open interest only for derivatives.
+        frame["Nav"] = frame["Nav"].where(frame["Nav"] > 0)
+        frame["OpenInterest"] = frame["OpenInterest"].where(frame["Type"].isin(_OI_CODES))
     else:
         frame["StockQty"] = frame["StockQty"].map(_code_text).astype("object")
     return frame[BOARD_FIELDS]
@@ -107,8 +114,9 @@ def _finish(frame: pd.DataFrame, *, numeric: bool) -> pd.DataFrame:
 def parse_market_watch(rows: list[dict], *, numeric=True) -> pd.DataFrame:
     """Parse the new ``ClosingPrice/GetMarketWatch`` rows.
 
-    Note: the new API does not return Type (yVal) or MarketType (flow); these
-    are filled later from the local archive / ``GetInstrumentInfo``.
+    Current responses carry Type (yVal), MarketType (flow), NAV (pRedTran),
+    open interest (buyOP) and board code (cGrValCot). Older responses without
+    them are completed from the local archive / ``GetInstrumentInfo``.
     """
     if not isinstance(rows, list) or not rows:
         raise DataSourceError("No market-watch rows in response")
@@ -205,12 +213,12 @@ def parse_watch(sections: list[str], *, numeric=True) -> pd.DataFrame:
         if len(fields) < 23 or not is_valid_id(fields[0].strip()):
             continue
         values = fields[1:]
-        # 22 values after the ID, or 25 (NAV / open interest + unknown tail).
+        # 22 values after the ID, or 25 (NAV, open interest, board code).
         if len(values) not in (22, 25):
             continue
         row_dict = dict(zip(_OLD_ORDER, values[:22]))
         if len(values) == 25:
-            row_dict.update(dict(zip(["Nav", "OpenInterest"], values[22:24])))
+            row_dict.update(dict(zip(["Nav", "OpenInterest", "Board"], values[22:25])))
         row_dict["IndexURL"] = fields[0].strip()
         rows.append(row_dict)
     if not rows:
@@ -359,6 +367,40 @@ class Market:
             board = board.join(parse_depth(sections), how="left")
         self.last_source = "old"
         return board
+
+    def stream(self, *, interval=1.0, duration=None, depth=True, types=None,
+               only_changes=True, source="new"):
+        """Poll the market watch repeatedly and yield ``(timestamp, frame)``.
+
+        ``only_changes=True`` yields only rows whose prices, volume or order
+        book changed since the previous poll (all rows on the first poll).
+        ``duration`` in seconds (None = until interrupted). Errors of a single
+        poll are skipped; the stream continues.
+        """
+        import time
+        from datetime import datetime
+        watch = BOARD_FIELDS[3:13] + (DEPTH_COLUMNS if depth else []) + ["OpenInterest", "Nav"]
+        previous = None
+        start = time.monotonic()
+        while duration is None or time.monotonic() - start < duration:
+            tick = time.monotonic()
+            try:
+                board = self.snapshot(depth=depth, source=source)
+            except DataSourceError:
+                board = None
+            if board is not None:
+                if types:
+                    board = filter_type(board, types)
+                if only_changes and previous is not None:
+                    cols = [c for c in watch if c in board and c in previous]
+                    old = previous.reindex(board.index)[cols]
+                    changed = ~(board[cols].eq(old) | (board[cols].isna() & old.isna())).all(axis=1)
+                    out = board.loc[changed]
+                else:
+                    out = board
+                previous = board
+                yield datetime.now(), out
+            time.sleep(max(0.0, interval - (time.monotonic() - tick)))
 
     def by_type(self, types, *, depth=False, primary_board_only=False, source=None):
         return filter_type(self.snapshot(depth=depth, source=source), types,
