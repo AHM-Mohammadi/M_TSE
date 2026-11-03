@@ -1,0 +1,6 @@
+include LICENSE README.md CHANGELOG.md pyproject.toml install_windows.bat daily_sync_windows.bat
+recursive-include docs *.md
+recursive-include examples *.py
+recursive-include notebooks *.ipynb
+recursive-include tests *.py
+recursive-include src/M_TSE/data *.xlsx

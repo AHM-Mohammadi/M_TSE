@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "M_TSE"
+version = "1.2.0"
+description = "M_TSE: TSETMC (Tehran Stock Exchange) market watch, derivatives and durable historical-price archive"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "M_TSE contributors"}]
+dependencies = ["pandas>=1.5", "numpy>=1.23", "requests>=2.28", "openpyxl>=3.0"]
+keywords = ["tsetmc", "tehran-stock-exchange", "market-data", "options", "sqlite"]
+
+[project.optional-dependencies]
+notebook = ["jupyter>=1.0"]
+test = ["pytest>=7"]
+
+[project.scripts]
+mtse = "M_TSE.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+M_TSE = ["data/*.xlsx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
