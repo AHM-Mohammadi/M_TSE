@@ -533,3 +533,18 @@ def test_stream_yields_only_changes(new_rows, tmp_path):
     client.rows[0] = dict(client.rows[0], pdv=8100.0)
     _, third = next(gen)
     assert list(third.index) == [IID_A] and third.loc[IID_A, "Last"] == 8100
+
+
+def test_multi_word_underlying_resolved():
+    # «جوانه کوچک» has a space: the last-word parse gives «کوچک»; the board lookup fixes it.
+    import pandas as pd
+    from M_TSE.derivatives import add_contract_columns, resolve_underlying
+    from M_TSE.utils import ticker_key
+    keys = {ticker_key(t) for t in ("جوانه کوچک", "خودرو", "های وب")}
+    assert resolve_underlying("اختیارخ جوانه کوچک-5500-1405/09/25", "کوچک", keys) == "جوانه کوچک"
+    assert resolve_underlying("اختیارخ خودرو-2500-1405/09/25", "خودرو", keys) == "خودرو"
+    assert resolve_underlying("اختیارخ وب-2500-1405/09/25", "های وب", keys) == "های وب"   # alias kept
+    frame = pd.DataFrame({"Name": ["اختیارخ جوانه کوچک-5500-1405/09/25"], "Type": ["311"]})
+    out = add_contract_columns(frame, known_tickers=["جوانه کوچک"])
+    assert out["Underlying"].iloc[0] == "جوانه کوچک" and out["Strike"].iloc[0] == 5500
+    assert add_contract_columns(frame)["Underlying"].iloc[0] == "کوچک"              # no board -> old behaviour

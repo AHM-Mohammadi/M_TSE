@@ -36,13 +36,42 @@ def _name_contract(name: object):
         return None, None, None
 
 
-def add_contract_columns(frame: pd.DataFrame, *, today=None) -> pd.DataFrame:
-    """OptionKind, Underlying, Strike, Expiry, DaysToExpiry (calendar days)."""
+def resolve_underlying(name: object, parsed, known_keys) -> object:
+    """Underlying ticker tolerant of multi-word tickers (e.g. «جوانه کوچک», options ضجوا…).
+
+    Every word-suffix of the contract-name head is tried, longest first, against ``known_keys``
+    (``ticker_key`` of the board's tickers); the first match wins. Otherwise ``parsed`` (last word +
+    UNDERLYING_ALIASES) is kept.
+    """
+    if not isinstance(name, str) or not known_keys:
+        return parsed
+    value = normalize(name)
+    if value.count("-") < 2:
+        return parsed
+    words = value.rsplit("-", 2)[0].split()[1:]      # drop "اختیارخ" / "اختیارف"
+    for k in range(len(words), 0, -1):
+        candidate = " ".join(words[-k:])
+        if ticker_key(candidate) in known_keys:
+            return candidate
+    return parsed
+
+
+def add_contract_columns(frame: pd.DataFrame, *, today=None, known_tickers=None) -> pd.DataFrame:
+    """OptionKind, Underlying, Strike, Expiry, DaysToExpiry (calendar days).
+
+    ``known_tickers``: optional iterable of underlying tickers on the board; when given, multi-word
+    underlyings are resolved against it (see ``resolve_underlying``).
+    """
     options = frame.copy()
     options["OptionKind"] = options["Type"].map(
         lambda typ: "call" if _code_text(typ) in CALL_CODES else "put").astype("object")
     parsed = options["Name"].map(_name_contract)
     options["Underlying"] = parsed.map(lambda x: x[0]).astype("object")
+    if known_tickers is not None:
+        keys = {ticker_key(t) for t in known_tickers if isinstance(t, str)}
+        options["Underlying"] = [resolve_underlying(n, u, keys)
+                                 for n, u in zip(options["Name"], options["Underlying"])]
+        options["Underlying"] = options["Underlying"].astype("object")
     options["Strike"] = pd.to_numeric(parsed.map(lambda x: x[1]), errors="coerce")
     options["Expiry"] = parsed.map(lambda x: x[2]).astype("object")
     now = today or date.today()
@@ -62,9 +91,10 @@ class Derivatives:
         snapshot = self.market.snapshot(depth=depth, source=source)
         types = {"both": ["CallOption", "PutOption"],
                  "call": ["CallOption"], "put": ["PutOption"]}[kind]
-        options = add_contract_columns(filter_type(snapshot, types), today=today)
+        base = filter_type(snapshot, ["Stock", "Fund", "CommodityFund"]) if underlying else None
+        options = add_contract_columns(filter_type(snapshot, types), today=today,
+                                       known_tickers=None if base is None else base["Ticker"])
         if underlying:
-            base = filter_type(snapshot, ["Stock", "Fund", "CommodityFund"])
             # If a ticker occurs more than once, prefer the main-board listing.
             base = base.assign(_key=base["Ticker"].map(ticker_key),
                                _primary=base["IRcode"].astype(str).str.endswith("1").astype(int))

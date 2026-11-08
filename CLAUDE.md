@@ -4,7 +4,7 @@ Owner: AHM-Mohammadi (Persian speaker; reply in Persian, code/identifiers Englis
 Python library for TSETMC (Tehran Stock Exchange) market data + durable SQLite archive.
 Used by the private project **M_Options** (option watch list) as a dependency — don't break its API.
 
-## Status (v1.3.0)
+## Status (v1.3.1)
 - Verified LIVE by the user: new-API snapshot, NAV, open interest, board code, stream.
 - User env: Windows 10, Anaconda base `C:\Users\a.mohammadi\AppData\Local\anaconda3\python.exe`,
   archive folder `C:\Users\a.mohammadi\Documents\Archive Updater\M_TSE` (saved in ~/.m_tse/config.json).
@@ -17,6 +17,8 @@ Used by the private project **M_Options** (option watch list) as a dependency �
 - `market.py`  parse_market_watch (new JSON, 42 keys/row), parse_watch/parse_depth (old, 22 or 25 values),
   Market.snapshot/overview/by_type/stream, filter_type, TYPE_CODES.
 - `derivatives.py` options/calls/puts/futures; contract specs parsed from NAME (underlying-strike-jalali date).
+  Underlying = longest word-suffix of the name head that matches a board ticker (resolve_underlying, 1.3.1; e.g.
+  «جوانه کوچک»), else last word + UNDERLYING_ALIASES.
 - `history.py`  fetch/fetch_many, parse_history, adjustments (factor = pClosing/pClosingNotAdjusted, applied to days
   strictly before event).
 - `archive.py`  SQLite (schema v2, PRAGMA user_version; auto-migrates v1 with .v1-backup copy), TDA Excel export
