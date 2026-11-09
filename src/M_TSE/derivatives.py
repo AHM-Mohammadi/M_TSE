@@ -36,7 +36,26 @@ def _name_contract(name: object):
         return None, None, None
 
 
-def resolve_underlying(name: object, parsed, known_keys) -> object:
+def match_abbreviation(token, tickers) -> object:
+    """«جوانه.ک» -> «جوانه کوچک»: dotted parts must be prefixes of the ticker's words, in order.
+
+    Returns the ticker only when exactly one board ticker matches; otherwise None.
+    """
+    import re
+    if not isinstance(token, str) or "." not in token:
+        return None
+    parts = [ticker_key(p) for p in re.split(r"[.\s]+", normalize(token)) if p]
+    if len(parts) < 2:
+        return None
+    hits = []
+    for t in tickers:
+        words = [ticker_key(w) for w in normalize(str(t)).split()]
+        if len(words) == len(parts) and all(w.startswith(p) for w, p in zip(words, parts)):
+            hits.append(t)
+    return hits[0] if len(set(hits)) == 1 else None
+
+
+def resolve_underlying(name: object, parsed, known_keys, tickers=()) -> object:
     """Underlying ticker tolerant of multi-word tickers (e.g. «جوانه کوچک», options ضجوا…).
 
     Every word-suffix of the contract-name head is tried, longest first, against ``known_keys``
@@ -53,6 +72,10 @@ def resolve_underlying(name: object, parsed, known_keys) -> object:
         candidate = " ".join(words[-k:])
         if ticker_key(candidate) in known_keys:
             return candidate
+    for k in range(len(words), 0, -1):                 # abbreviated names, e.g. «جوانه.ک»
+        hit = match_abbreviation(" ".join(words[-k:]), tickers)
+        if hit:
+            return hit
     return parsed
 
 
@@ -68,8 +91,9 @@ def add_contract_columns(frame: pd.DataFrame, *, today=None, known_tickers=None)
     parsed = options["Name"].map(_name_contract)
     options["Underlying"] = parsed.map(lambda x: x[0]).astype("object")
     if known_tickers is not None:
-        keys = {ticker_key(t) for t in known_tickers if isinstance(t, str)}
-        options["Underlying"] = [resolve_underlying(n, u, keys)
+        names = [t for t in known_tickers if isinstance(t, str)]
+        keys = {ticker_key(t) for t in names}
+        options["Underlying"] = [resolve_underlying(n, u, keys, names)
                                  for n, u in zip(options["Name"], options["Underlying"])]
         options["Underlying"] = options["Underlying"].astype("object")
     options["Strike"] = pd.to_numeric(parsed.map(lambda x: x[1]), errors="coerce")

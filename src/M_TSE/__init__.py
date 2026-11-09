@@ -14,7 +14,7 @@ from .archive import Archive
 from .errors import TSEMarketError, DataSourceError, InstrumentNotFound, AmbiguousTicker
 from .utils import normalize, ticker_key, coerce_id, to_excel, gregorian_to_jalali, jalali_to_gregorian
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 import json as _json
 import os as _os

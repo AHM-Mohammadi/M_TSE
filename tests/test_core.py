@@ -548,3 +548,8 @@ def test_multi_word_underlying_resolved():
     out = add_contract_columns(frame, known_tickers=["جوانه کوچک"])
     assert out["Underlying"].iloc[0] == "جوانه کوچک" and out["Strike"].iloc[0] == 5500
     assert add_contract_columns(frame)["Underlying"].iloc[0] == "کوچک"              # no board -> old behaviour
+    # real TSETMC name: abbreviated «جوانه.ک»
+    assert resolve_underlying("اختیارخ جوانه.ک-38000-05/10/30", "جوانه.ک", keys,
+                              ["جوانه کوچک", "خودرو", "جوانه"]) == "جوانه کوچک"
+    f2 = pd.DataFrame({"Name": ["اختیارخ جوانه.ک-38000-05/10/30"], "Type": ["311"]})
+    assert add_contract_columns(f2, known_tickers=["جوانه کوچک", "خودرو"])["Underlying"].iloc[0] == "جوانه کوچک"
